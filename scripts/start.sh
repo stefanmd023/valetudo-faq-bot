@@ -7,4 +7,4 @@ program="$base/simple-tg-faq-bot/faqbot.py"
 bot="$base/valetudobot"
 token="$base/token.txt"
 
-exec /usr/bin/env python "$program" -b "$bot" -t "$token"
+exec /usr/bin/env python3 "$program" -b "$bot" -t "$token"
