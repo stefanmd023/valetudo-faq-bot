@@ -5,18 +5,23 @@ import os
 import difflib
 
 # --- CONFIGURATION ---
-FAQ_PATH = './valetudobot/faq'  
-EMBED_COLOR = 0x3498db           
+BASE_PATH = './valetudobot'
+FAQ_PATH = os.path.join(BASE_PATH, 'faq')
+ROOT_PATH = os.path.join(BASE_PATH, 'root')
+EMBED_COLOR_FAQ = 0x3498db  # Blue
+EMBED_COLOR_ROOT = 0xe74c3c # Red
 
 # --- TOKEN LOADER ---
 def load_token():
+    """Reads the token from disctoken.txt with safety for hidden characters."""
     token_file = 'disctoken.txt'
     if os.path.exists(token_file):
         with open(token_file, 'r', encoding='utf-8-sig') as f:
             lines = f.read().splitlines()
             for line in lines:
-                if line.strip(): return line.strip()
-    exit("❌ disctoken.txt missing!")
+                if line.strip(): 
+                    return line.strip()
+    exit("❌ Error: disctoken.txt missing or empty in /data/valetudo-faq-bot/")
 
 TOKEN = load_token()
 
@@ -30,122 +35,111 @@ class ValetudoBot(commands.Bot):
     async def setup_hook(self):
         # Syncs slash commands globally
         await self.tree.sync()
-        print(f"🌐 Slash commands synced for {self.user}")
+        print(f"🌐 Logged in as {self.user} | Commands Synced")
 
 bot = ValetudoBot()
 
 # --- DATA HELPERS ---
 
-def get_faq_list():
-    if not os.path.exists(FAQ_PATH): return []
-    return [f.replace('.txt', '') for f in os.listdir(FAQ_PATH) if f.endswith('.txt')]
+def get_file_list(folder_path):
+    """Returns a list of .txt filenames (without extension) for autocomplete."""
+    if not os.path.exists(folder_path):
+        return []
+    return [f.replace('.txt', '') for f in os.listdir(folder_path) if f.endswith('.txt')]
 
 def parse_valetudo_file(file_path):
-    title, content, is_text = "FAQ", "", False
-    with open(file_path, 'r', encoding='utf-8') as f:
-        for line in f:
-            if line.startswith('title:'): title = line.replace('title:', '').strip()
-            elif line.strip().lower() == 'text:':
-                is_text = True
-                continue
-            if is_text: content += line
-    return title, content.strip().replace('<code>', '`').replace('</code>', '`')
-
-# --- UI COMPONENTS ---
-
-class HelpButtons(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=60)
-
-    @discord.ui.button(label="📄 List Topics", style=discord.ButtonStyle.primary)
-    async def topics_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        topics = get_faq_list()
-        embed = discord.Embed(
-            title="📖 FAQ Topics", 
-            description="Use `/faq <topic>`\n\n" + ", ".join([f"`{t}`" for t in topics]),
-            color=EMBED_COLOR
-        )
-        await interaction.response.edit_message(embed=embed, view=self)
-
-    @discord.ui.button(label="🔍 Search Keywords", style=discord.ButtonStyle.secondary)
-    async def keywords_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Quick keyword scan
-        all_kws = set()
-        for f_name in os.listdir(FAQ_PATH):
-            if f_name.endswith('.txt'):
-                with open(os.path.join(FAQ_PATH, f_name), 'r', encoding='utf-8') as f:
-                    for line in f:
-                        if line.startswith('keywords:'):
-                            all_kws.update([k.strip() for k in line.replace('keywords:', '').split(',')])
-                            break
-        
-        embed = discord.Embed(
-            title="🔍 Keywords", 
-            description="Search using these words:\n\n" + ", ".join([f"`{k}`" for k in sorted(list(all_kws))]),
-            color=EMBED_COLOR
-        )
-        await interaction.response.edit_message(embed=embed, view=self)
+    """Parses Valetudo-style .txt files (Title: ... Text: ...)"""
+    title, content, is_text = "Information", "", False
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                if line.startswith('title:'):
+                    title = line.replace('title:', '').strip()
+                elif line.strip().lower() == 'text:':
+                    is_text = True
+                    continue
+                if is_text:
+                    content += line
+        # Simple HTML to Markdown conversion
+        content = content.replace('<code>', '`').replace('</code>', '`').strip()
+        return title, content
+    except Exception as e:
+        return "Error", f"Could not read file: {e}"
 
 # --- HYBRID COMMANDS ---
 
 @bot.hybrid_command(name="helpme", description="Show the Valetudo help menu")
 async def helpme(ctx: commands.Context):
-    view = HelpButtons()
     embed = discord.Embed(
         title="Valetudo Support",
-        description="Select an option below to browse the FAQ database.",
-        color=EMBED_COLOR
+        description=(
+            "**Commands:**\n"
+            "`/faq <topic>` - General setup and troubleshooting\n"
+            "`/root <robot>` - Specific rooting instructions\n\n"
+            "*Type `/` to see the autocomplete list!*"
+        ),
+        color=EMBED_COLOR_FAQ
     )
-    await ctx.send(embed=embed, view=view)
+    await ctx.send(embed=embed)
 
-@bot.hybrid_command(name="faq", description="Search the Valetudo FAQ database")
-@app_commands.describe(topic="The topic or keyword you are looking for")
-async def faq(ctx: commands.Context, topic: str = None):
-    if not topic:
-        return await helpme(ctx)
-
-    topic = topic.lower().strip()
-    found_file = None
-    all_files = [f for f in os.listdir(FAQ_PATH) if f.endswith('.txt')]
+@bot.hybrid_command(name="faq", description="Search general Valetudo FAQ")
+@app_commands.describe(topic="The general topic to search for")
+async def faq(ctx: commands.Context, topic: str):
+    path = os.path.join(FAQ_PATH, f"{topic.lower()}.txt")
     
-    # 1. Filename Match
-    potential_path = os.path.join(FAQ_PATH, f"{topic}.txt")
-    if os.path.exists(potential_path):
-        found_file = potential_path
-    
-    # 2. Internal Keyword Match
-    if not found_file:
-        for f_name in all_files:
-            path = os.path.join(FAQ_PATH, f_name)
-            with open(path, 'r', encoding='utf-8') as f:
-                head = [next(f) for _ in range(15) if f] 
-                for line in head:
-                    if line.startswith('keywords:') and topic in line.lower():
-                        found_file = path
-                        break
-            if found_file: break
-
-    if found_file:
-        title, text = parse_valetudo_file(found_file)
-        embed = discord.Embed(title=f"🛠️ {title}", description=text[:4000], color=EMBED_COLOR)
+    if os.path.exists(path):
+        title, text = parse_valetudo_file(path)
+        embed = discord.Embed(title=f"📖 {title}", description=text[:4000], color=EMBED_COLOR_FAQ)
         await ctx.send(embed=embed)
     else:
-        possible = get_faq_list()
-        matches = difflib.get_close_matches(topic, possible, n=1, cutoff=0.6)
+        # Suggest a close match if they made a typo
+        options = get_file_list(FAQ_PATH)
+        matches = difflib.get_close_matches(topic.lower(), options, n=1, cutoff=0.5)
         suggestion = f" Did you mean `/faq {matches[0]}`?" if matches else ""
-        await ctx.send(f"❌ Topic not found.{suggestion}", ephemeral=True)
+        await ctx.send(f"❌ FAQ topic `{topic}` not found.{suggestion}", ephemeral=True)
 
-# Autocomplete for /faq
+@bot.hybrid_command(name="root", description="Search robot-specific rooting instructions")
+@app_commands.describe(robot="The robot model to get rooting info for")
+async def root(ctx: commands.Context, robot: str):
+    path = os.path.join(ROOT_PATH, f"{robot.lower()}.txt")
+    
+    if os.path.exists(path):
+        title, text = parse_valetudo_file(path)
+        embed = discord.Embed(title=f"🔐 Rooting: {title}", description=text[:4000], color=EMBED_COLOR_ROOT)
+        await ctx.send(embed=embed)
+    else:
+        options = get_file_list(ROOT_PATH)
+        matches = difflib.get_close_matches(robot.lower(), options, n=1, cutoff=0.5)
+        suggestion = f" Did you mean `/root {matches[0]}`?" if matches else ""
+        await ctx.send(f"❌ Rooting guide for `{robot}` not found.{suggestion}", ephemeral=True)
+
+# --- AUTOCOMPLETE HANDLERS ---
+
 @faq.autocomplete('topic')
 async def faq_autocomplete(interaction: discord.Interaction, current: str):
-    topics = get_faq_list()
-    return [app_commands.Choice(name=t, value=t) for t in topics if current.lower() in t.lower()][:25]
+    topics = get_file_list(FAQ_PATH)
+    return [
+        app_commands.Choice(name=t, value=t) 
+        for t in topics if current.lower() in t.lower()
+    ][:25]
 
-# Sync command for owner
+@root.autocomplete('robot')
+async def root_autocomplete(interaction: discord.Interaction, current: str):
+    robots = get_file_list(ROOT_PATH)
+    return [
+        app_commands.Choice(name=r, value=r) 
+        for r in robots if current.lower() in r.lower()
+    ][:25]
+
+# --- OWNER ONLY UTILITIES ---
+
 @bot.command()
 @commands.is_owner()
 async def sync(ctx):
+    """Force sync commands to the current server immediately."""
     await bot.tree.sync()
-    await ctx.send("✅ Synced!")
+    await ctx.send("✅ Slash commands synced to this server!")
 
-bot.run(TOKEN)
+# --- START THE BOT ---
+if __name__ == "__main__":
+    bot.run(TOKEN)
