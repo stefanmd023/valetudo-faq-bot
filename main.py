@@ -12,11 +12,14 @@ def load_token():
     """Reads the token from disctoken.txt in the same folder."""
     token_file = 'disctoken.txt'
     if os.path.exists(token_file):
-        with open(token_file, 'r', encoding='utf-8') as f:
-            return f.read().strip()
-    else:
-        print(f"❌ Error: {token_file} not found! Create the file and paste your token inside.")
-        exit()
+            with open(token_file, 'r', encoding='utf-8-sig') as f: # utf-8-sig removes BOM characters
+                lines = f.read().splitlines()
+                for line in lines:
+                    clean_line = line.strip()
+                    if clean_line: # Get the first non-empty line
+                        return clean_line
+    print(f"❌ Error: {token_file} is empty or missing!")
+    exit()
 
 TOKEN = load_token()
 
