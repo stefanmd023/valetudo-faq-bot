@@ -20,6 +20,7 @@ if [ "$LATEST_VERSION" != "$LAST_VERSION" ]; then
     echo "New Valetudo release found: $LATEST_VERSION. Updating..."
     
     # 1. Run your Perl script
+    cd /data/valetudo-faq-bot/scripts
     rm -rf /data/valetudo-faq-bot/valetudobot/root/*
     perl "$PERL_SCRIPT" /data/valetudo-faq-bot/valetudobot/root
     
