@@ -16,20 +16,22 @@ my $manufacturer = "";
 my $bot_id = undef;
 my $sold_as = 0;
 
+print "--- Starting Parse ---\n";
+
 while (my $line = <$in>) {
     ++$n;
     
     # 1. Manufacturer (h2)
     if ($line =~ m{<h2[^>]*id="([^"]+)"[^>]*>(.*?)</h2>}) {
         $manufacturer = $2;
+        print "-> [Manufacturer] Set context: $manufacturer\n";
     }
     # 2. Model (h3)
     elsif ($line =~ m{<h3[^>]*id="([^"]+)"[^>]*>(.*?)</h3>}) {
         $bot_id = $1;
         my $model_name = $2;
         
-        # --- SMART NAME ASSEMBLER ---
-        # If manufacturer is already in the name, don't prepend it again.
+        # Smart Name Assembler
         my $full_name = ($model_name =~ m/^\s*\Q$manufacturer\E/i) 
                         ? $model_name 
                         : "$manufacturer $model_name";
@@ -40,6 +42,7 @@ while (my $line = <$in>) {
             "models_lines" => [$n],
             "id" => $bot_id
         };
+        print "   [Model] Found: $model_name (ID: $bot_id) -> Saved as: $full_name\n";
         $sold_as = 0;
     }
     # 3. Sold as trigger
@@ -49,14 +52,17 @@ while (my $line = <$in>) {
     # 4. Alias list items
     elsif ($sold_as && $line =~ m{<li>(.*?)</li>}) {
         my $alias = $1;
-        $alias =~ s/<[^>]*>//g; # Remove nested tags
+        $alias =~ s/<[^>]*>//g; 
         push @{$robots{$bot_id}{"models"}}, $alias;
+        print "      [Alias] Added: $alias\n";
     }
     elsif ($sold_as && $line =~ m{</ul>}) {
         $sold_as = 0;
     }
 }
 close $in;
+
+print "--- Parsing Complete. Found " . scalar(keys %robots) . " robots. ---\n";
 
 # --- KEYWORD GENERATION ---
 sub add_keywords {
@@ -105,4 +111,5 @@ text:
 You can find rooting information at https://valetudo.cloud/pages/general/supported-robots/#$id$aka
 EOF
     close $out;
+    print "   + Created file: $fname\n";
 }
