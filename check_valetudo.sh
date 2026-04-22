@@ -22,6 +22,8 @@ if [ "$LATEST_VERSION" != "$LAST_VERSION" ]; then
     # 1. Run your Perl script
     cd /data/valetudo-faq-bot/scripts
     rm -rf /data/valetudo-faq-bot/valetudobot/root/*
+    rm /data/valetudo-faq-bot/scripts/index.html
+    wget https://valetudo.cloud/pages/general/supported-robots/
     perl "$PERL_SCRIPT" /data/valetudo-faq-bot/valetudobot/root
     
     # 2. Update the version file
