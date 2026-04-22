@@ -4,93 +4,76 @@ use strict;
 use warnings;
 use List::MoreUtils qw(uniq);
 
+# Set the input file
 my $mdfile = "index.html";
 
+# Check if file exists
 open my $in, "<$mdfile" or die "Could not open '$mdfile': $!\n"
-    . "You can fetch it from https://raw.githubusercontent.com/Hypfer/Valetudo/refs/heads/master/docs/pages/general/supported-robots.md\n";
+    . "Ensure you have downloaded the full HTML source (e.g., using wget or curl).\n";
 
+# Handle output directory
 my $outdir = shift;
 $outdir =~ s@/$@@ if defined $outdir; 
-
 print "No output directory supplied, just parsing the data!\n" unless defined $outdir;
 
 my %robots;
 my $n = 0;
-
-# --- TOC PARSING ---
-my $in_toc = 0;
 my $manufacturer = "";
-
-print "Starting to parse file: $mdfile\n";
-
-while (my $line = <$in>) {
-    ++$n;
-    
-    if ($line =~ m{<div class="toc">}) {
-        print "-> Found TOC section at line $n\n";
-        $in_toc = 1;
-        next;
-    }
-
-    if ($in_toc && $line =~ m{</div>}) {
-        print "-> Reached end of TOC section at line $n\n";
-        last;
-    }
-
-    if ($in_toc) {
-        if ($line =~ m{<li><a href="/pages/general/supported-robots/#([^"]+)">([^<]+)</a>}) {
-            my $id = $1;
-            my $name = $2;
-
-            if ($line =~ m{</a>\s*<ol>}) {
-                $manufacturer = $name;
-                print "   [Manufacturer] Set current context to: $manufacturer\n";
-            } 
-            elsif ($manufacturer ne "") {
-                die "Duplicate id '$id'!\n" if defined $robots{$id};
-                
-                $robots{$id} = { 
-                    "manufacturer" => $manufacturer,
-                    "models" => ["$manufacturer $name"],
-                    "models_lines" => [$n],
-                    "id" => $id
-                };
-                print "   [Model] Found robot: $name (ID: $id)\n";
-            }
-        }
-    }
-}
-
-# --- BODY PARSING ---
 my $bot_id = undef;
 my $sold_as = 0;
-print "Starting body parsing...\n";
+
+print "--- Starting HTML Header Scan ---\n";
 
 while (my $line = <$in>) {
     ++$n;
-    $line =~ s/\s*$//;
     
-    if ($line =~ m/^###.*id="([^"]+)"/) {
+    # 1. Look for Manufacturer (h2)
+    # Matches: <h2 id="xiaomi" ...>Xiaomi</h2>
+    if ($line =~ m{<h2[^>]*id="([^"]+)"[^>]*>(.*?)</h2>}) {
+        $manufacturer = $2;
+        print "-> [Manufacturer] Set context: $manufacturer\n";
+    }
+
+    # 2. Look for Model (h3)
+    # Matches: <h3 id="xiaomi-v1" ...>Xiaomi V1</h3>
+    elsif ($line =~ m{<h3[^>]*id="([^"]+)"[^>]*>(.*?)</h3>}) {
         $bot_id = $1;
-        if (defined $robots{$bot_id}) {
-            print "   [Body] Matching ID: $bot_id\n";
-        } else {
-            die "Bad id at line $n: $bot_id\n";
-        }
-    } elsif ($line =~ m/.*sold as:\s*$/) {
+        my $model_name = $2;
+        
+        $robots{$bot_id} = { 
+            "manufacturer" => $manufacturer,
+            "models" => ["$manufacturer $model_name"],
+            "models_lines" => [$n],
+            "id" => $bot_id
+        };
+        print "   [Model] Found: $model_name (ID: $bot_id)\n";
+        $sold_as = 0; # Reset sold_as state for the new model
+    }
+
+    # 3. Look for "sold as:" trigger
+    elsif ($line =~ m{sold as:}) {
         $sold_as = 1;
-    } elsif ($sold_as == 1 and $line =~ m/- \s*(.*)/) {
-        my $as = $1;
-        push @{$robots{$bot_id}{"models"}}, $as;
+    }
+
+    # 4. Look for list items (aliases) if we are in "sold as" mode
+    elsif ($sold_as && $line =~ m{<li>(.*?)</li>}) {
+        my $alias = $1;
+        # Clean up any potential nested tags like <strong> inside the LI
+        $alias =~ s/<[^>]*>//g;
+        
+        push @{$robots{$bot_id}{"models"}}, $alias;
         push @{$robots{$bot_id}{"models_lines"}}, $n;
-        print "   [Alias] Added alias for $bot_id: $as\n";
-    } elsif ($sold_as == 1) {
+        print "      [Alias] Added: $alias\n";
+    }
+    
+    # 5. Stop "sold as" mode if we hit a closing list or new section
+    elsif ($sold_as && $line =~ m{</ul>}) {
         $sold_as = 0;
     }
 }
 
 close $in;
-print "Parsing complete.\n\n";
+print "--- Parsing Complete. Found " . scalar(keys %robots) . " robots. ---\n\n";
 
 # --- KEYWORD GENERATION ---
 sub add_keywords {
@@ -108,6 +91,7 @@ sub add_keywords {
     }
 }
 
+# --- OUTPUT GENERATION ---
 foreach my $id (sort keys %robots) {
     print "Processing ID: $id\n";
     $n = 0;
@@ -127,23 +111,18 @@ foreach my $id (sort keys %robots) {
     @uniq_models = sort @uniq_models;
     my $fname = "$outdir/$id.txt";
     
-    # Check for duplicates or handle output
-    if (-e $fname) {
-        print "   ! File $fname already exists, skipping write.\n";
-    } else {
-        open my $out, ">$fname" or die "Could not open '$fname': $!\n";
-        my $aka = "";
-        if (scalar @uniq_models > 1) {
-            $aka = join ("\n - ", "\nThis robot is also known as:", @uniq_models);
-        }
-        print $out <<"EOF";
+    open my $out, ">$fname" or die "Could not open '$fname': $!\n";
+    my $aka = "";
+    if (scalar @uniq_models > 1) {
+        $aka = join ("\n - ", "\nThis robot is also known as:", @uniq_models);
+    }
+    print $out <<"EOF";
 keywords: $keywords
 title: $robots{$id}{"models"}[0]
 short-title: $id
 text:
 You can find rooting information at https://valetudo.cloud/pages/general/supported-robots/#$id$aka
 EOF
-        close $out;
-        print "   + Created file: $fname\n";
-    }
+    close $out;
+    print "   + Created file: $fname\n";
 }
