@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use List::MoreUtils qw(uniq);
 
-my $mdfile = "supported-robots.md";
+my $mdfile = "index.html";
 
 open my $in, "<$mdfile" or die "Could not open '$mdfile': $!\n"
     . "You can fetch it from https://raw.githubusercontent.com/Hypfer/Valetudo/refs/heads/master/docs/pages/general/supported-robots.md\n";
