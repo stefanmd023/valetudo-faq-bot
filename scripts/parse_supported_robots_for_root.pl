@@ -7,7 +7,7 @@ use List::MoreUtils qw(uniq);
 my $mdfile = "supported-robots.md";
 
 open my $in, "<$mdfile" or die "Could not open '$mdfile': $!\n"
-    . "You can fetch it from https://raw.githubusercontent.com/Hypfer/Valetudo/master/docs/_pages/general/supported-robots.md\n";
+    . "You can fetch it from https://raw.githubusercontent.com/Hypfer/Valetudo/refs/heads/master/docs/pages/general/supported-robots.md\n";
 
 my $outdir = shift;
 $outdir =~ s@/$@@ if defined $outdir; 
@@ -113,7 +113,7 @@ keywords: $keywords
 title: $robots{$id}{"models"}[0]
 short-title: $id
 text:
-You can find rooting information at https://valetudo.cloud/pages/general/supported-robots.html#$id$aka
+You can find rooting information at https://valetudo.cloud/pages/general/supported-robots/#$id$aka
 EOF
     ;
     close $out;
