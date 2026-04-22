@@ -7,7 +7,7 @@ use List::MoreUtils qw(uniq);
 my $mdfile = "index.html";
 
 open my $in, "<$mdfile" or die "Could not open '$mdfile': $!\n"
-    . "You can fetch it from https://raw.githubusercontent.com/Hypfer/Valetudo/refs/heads/master/docs/pages/general/supported-robots.md\n";
+    . "You can fetch it from https://valetudo.cloud/pages/general/supported-robots/\n";
 
 my $outdir = shift;
 $outdir =~ s@/$@@ if defined $outdir; 
@@ -15,39 +15,53 @@ $outdir =~ s@/$@@ if defined $outdir;
 print "No output directory supplied, just parsing the data!\n" unless defined $outdir;
 
 my %robots;
+my $n = 0;
+
+# --- NEW TOC PARSING LOGIC ---
 my $in_toc = 0;
 my $manufacturer = "";
-my $n = 0;
+
 while (my $line = <$in>) {
     ++$n;
-    # strip trailing whitespaces
-    $line =~ s/\s*$//;
-    if ($line =~ m/.*\[Xiaomi\]/) {
+    
+    # 1. Gatekeeper: Start parsing
+    if ($line =~ m{<div class="toc">}) {
         $in_toc = 1;
-    } elsif (!$in_toc) {
         next;
     }
-    
-    ++$in_toc;
-    if ($line =~ m/^\s*$/ and $in_toc > 3) {
-        # 1. [Xiaomi](#xiaomi)
+
+    # 2. Gatekeeper: Stop parsing
+    if ($in_toc && $line =~ m{</div>}) {
         last;
-    } elsif ($line =~ m/^\d+\. \[(.*)\]\(.*\)$/) {
-        $manufacturer = $1;
-    } elsif ($line =~ m/\s+\d+\. \[(.*)\]\(#(.*)\)$/) {
-        #   6. [Vacuum-Mop 2 Ultra](#xiaomi_p2150)
-        my $model = $1;
-        my $id = $2;
-        die "Duplicate id '$id'!\n" if defined $robots{$id};
-        $robots{$id} = { 
-            "manufacturer" => $manufacturer,
-            "models" => ["$manufacturer $model"],
-            "models_lines" => [$n],
-            "id" => $id
-        };
+    }
+
+    # 3. Only parse if we are inside the TOC div
+    if ($in_toc) {
+        # Match list items containing links
+        if ($line =~ m{<li><a href="/pages/general/supported-robots/#([^"]+)">([^<]+)</a>}) {
+            my $id = $1;
+            my $name = $2;
+
+            # If the entry is followed by an <ol>, it's a Manufacturer (a category header)
+            if ($line =~ m{</a>\s*<ol>}) {
+                $manufacturer = $name;
+            } 
+            # Otherwise, it's a model belonging to the current manufacturer
+            elsif ($manufacturer ne "") {
+                die "Duplicate id '$id'!\n" if defined $robots{$id};
+                
+                $robots{$id} = { 
+                    "manufacturer" => $manufacturer,
+                    "models" => ["$manufacturer $name"],
+                    "models_lines" => [$n],
+                    "id" => $id
+                };
+            }
+        }
     }
 }
 
+# --- REMAINING BODY PARSING ---
 my $bot_id = undef;
 my $sold_as = 0;
 while (my $line = <$in>) {
