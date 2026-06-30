@@ -145,6 +145,13 @@ async def root_autocomplete(interaction, current: str):
 
 # --- ADMIN ---
 
+@bot.hybrid_command(name="shutdown", description="Owner only: Shutdown the bot")
+@commands.is_owner()
+async def shutdown(ctx: commands.Context):
+    await ctx.send("Shutting down...", ephemeral=True)
+    logger.info(f"ADMIN:{ctx.author} | ACTION:SHUTDOWN")
+    await bot.close()
+
 @bot.hybrid_command(name="faqsync", description="Owner only: Sync slash commands")
 @commands.is_owner()
 @commands.cooldown(1, 30, commands.BucketType.user)
